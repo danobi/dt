@@ -327,6 +327,10 @@ static void input_handle(void)
 		// update screen
 		directory_display(root_dir);
 		wrefresh(stdscr);
+
+		// this will "timeout" the CPU so the inifinite loop doesn't consume too many resources
+		// but it will also allow user input to be immediately available
+		halfdelay(255);
 	}
 }
 
