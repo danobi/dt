@@ -1,6 +1,21 @@
-#define MAX_PATH_LENGTH 256
-#define LINE_PADDING_WIDTH 3
-#define LOAD_DIR_DEPTH 3
+/* Directory changing utility for linux based systems
+ *
+ * Copyright (C) 2014, 2014-2015 Daniel Xu
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
 
 #include <curses.h>
 #include <stdio.h>
@@ -12,29 +27,38 @@
 #include <string.h>
 #include <assert.h>
 
+#define MAX_PATH_LENGTH 256
+#define LINE_PADDING_WIDTH 3
+#define LOAD_DIR_DEPTH 3
+#define SHELLSTR "source #/bin/bash \ncd "
+
 typedef struct _directory_t {
 	char * dirname; 					// name of current directory
 	char * fullpath; 					// full path of current directory
+	struct _directory_t * parent; 		// pointer to parent directory_t struct
 	struct _directory_t * children;   	// array of children structs
+	int idx_aschild; 						// index of struct in parent->children
 	int num_children; 					// number of children directories
 	bool isExpanded; 					// bool to represent if directory is expanded 
 	bool isSelected; 					// bool to represent if this directory is selected
 	bool isChildrenLoaded;
 } directory_t;
 
-static void tr_init(void);
-static void tr_destroy(void);
-static void directory_init(directory_t * dir);
-static void directory_destroy(directory_t * dir);
-static int  directory_load(directory_t * dirt, const char * dir, int depth);
-static void directory_display(const directory_t * dir);
-static void directory_display_helper(const directory_t * dir, int depth);
-static void directory_moveup(directory_t * rootdir, directory_t ** curdir);
-static void directory_movedown(directory_t * rootdir, directory_t ** curdir);
-static void directory_action(directory_t * curdir);
-static void directory_enter(directory_t * curdir);
-static void screen_clear(void);
-static void input_handle(void);
+static void	tr_init(void);
+static void	tr_destroy(void);
+static void	directory_init(directory_t * dir);
+static void	directory_destroy(directory_t * dir);
+static int 	directory_load(directory_t * dirt, const char * dir, int depth);
+static void	directory_display(const directory_t * dir);
+static void	directory_display_helper(const directory_t * dir, int depth);
+static void	directory_moveup(directory_t * root,directory_t ** curdir);
+static void	directory_movedown(directory_t * root, directory_t ** curdir);
+static void	directory_action(directory_t * curdir);
+static void	directory_enter(directory_t * curdir);
+static directory_t ** directory_collapsetree(directory_t * dir);
+static directory_t ** directory_collapsetree_helper(directory_t ** tree, directory_t * dir, int * idx);
+static void	screen_clear(void);
+static void	input_handle(void);
 static char * generate_padding(int depth);
 static bool isValidDir(const char * dir);
 static char * _strdup(const char * str);
@@ -94,9 +118,11 @@ static void
 directory_init(directory_t * dir) 
 {
 	dir->dirname = NULL;
+	dir->parent = NULL; 		// no parent initially
 	dir->children = NULL;
 	dir->fullpath = NULL;
-	dir->num_children = 0;
+	dir->idx_aschild = -1; 		// initially invalid
+	dir->num_children = 0; 		
 	dir->isExpanded = false;
 	dir->isSelected = false;
 	dir->isChildrenLoaded = false;
@@ -155,7 +181,9 @@ directory_load(directory_t * dir_t, const char * dir, int depth)
 				if (isValidDir(childpath)) {
 					int numc = ++dir_t->num_children;
 					dir_t->children = realloc(dir_t->children,numc * sizeof(directory_t));
-					directory_init(&dir_t->children[numc-1]);
+					directory_init(&dir_t->children[numc-1]); 		// init directory_t struct
+					dir_t->children[numc-1].parent = dir_t; 		// set parent pointer
+					dir_t->children[numc-1].idx_aschild = numc-1;      // set child idx
 					if (!directory_load(&dir_t->children[numc-1],childpath,depth-1))
 						returnval = 0;
 					dir_t->isChildrenLoaded = true;
@@ -178,7 +206,8 @@ directory_load(directory_t * dir_t, const char * dir, int depth)
  * TODO: currently, the strategy is to redraw the entire screen whenever there is any keyboard
  *     action. Perhaps this can be improved later (ironic 'perhaps')
  */
-static void directory_display(const directory_t * dir)
+static void 
+directory_display(const directory_t * dir)
 {
 	screen_clear();
 	wmove(stdscr,0,0);
@@ -191,7 +220,8 @@ static void directory_display(const directory_t * dir)
  * depth is how deep in the folder structure we are, top level directory (ie where tr was run) is 
  *     depth 0
  */
-static void directory_display_helper(const directory_t * dir, int depth)
+static void 
+directory_display_helper(const directory_t * dir, int depth)
 {
 	// generate the proper directory string
 	char * line = generate_padding(depth);
@@ -206,7 +236,6 @@ static void directory_display_helper(const directory_t * dir, int depth)
 	// turn on temporary formatting
 	if (dir->isSelected) {
 		attron(A_STANDOUT);
-		attron(A_UNDERLINE);
 	}
 	int y,x=3;y=x;  	// to silence warnings
 	getyx(stdscr,y,x);
@@ -216,7 +245,6 @@ static void directory_display_helper(const directory_t * dir, int depth)
 	// turn off temporary formatting
 	if (dir->isSelected) {
 		attroff(A_STANDOUT);
-		attroff(A_UNDERLINE);
 	}
 
 	// print children directories if necessary
@@ -230,34 +258,55 @@ static void directory_display_helper(const directory_t * dir, int depth)
 /*
  * This function will change curdir to be the directory "above" the current curdir in the 
  *     (user set) expanded view
- * The current strategy is to begin at the root dir and BFS the expanded view, keeping track of
- *     the current dir we're on as well as the previous one. Once we find the curdir, the previous
- *     dir must be the new curdir
- * rootdir should be the global variable root_dir
+ * The current strategy is to use directory_collapsetree(..) to collapse the entire (expanded)
+ *     directory structure beginning at root, and then finidng *curdir in it, then setting *curdir
+ *     to the previous entry in the collapsed array
+ * root should be the global variable root_dir
  * curdir should be the location of the pointer of the global variable cur_sel_dir, since this function
  *     plans on changing the value of cur_sel_dir
  */
 static void 
-directory_moveup(directory_t * rootdir, directory_t ** curdir)
+directory_moveup(directory_t * root, directory_t ** curdir)
 {
-	// TODO
+	directory_t ** tree = directory_collapsetree(root);
+	for (int i = 1; tree[i]; ++i) {
+		if (tree[i] == *curdir) {
+			if (tree[--i] != NULL) {
+				(*curdir)->isSelected = false;
+				*curdir = tree[i];
+				(*curdir)->isSelected = true;
+			}
+			break;
+		}
+	}
+	free(tree);
 }
 
 /*
  * This function will change curdir to be the directory "below" the current curdir in the 
  *     (user set) expanded view
- * The current strategy is to begin at curdir and see if curdir is expanded, if it is, getting the 
- *     directory "below" is trivial. If curdir is not expanded, we must BFS the expanded view keeping 
- *     track of the previous dir and the current dir we're on until we find the curdir. Then 
- *     the previous dir must be the new curdir
- * rootdir should be the global variable root_dir
+ * The current strategy is to use directory_collapsetree(..) to collpase the entire (expanded) 
+ * 	   directory structure beginning at root, and then finding *curdir in it, then setting *curdir 
+ * 	   to the next entry in the collapsed array
+ * root should be the global variable root_dir
  * curdir should be the location of the pointer of the global variable cur_sel_dir, since this function
  *     plans on changing the value of cur_sel_dir
  */
 static void 
-directory_movedown(directory_t * rootdir, directory_t ** curdir)
+directory_movedown(directory_t * root, directory_t ** curdir)
 {
-	// TODO
+	directory_t ** tree = directory_collapsetree(root);
+	for (int i = 1; tree[i]; ++i) {
+		if (tree[i] == *curdir) {
+			if (tree[++i] != NULL) {
+				(*curdir)->isSelected = false;
+				*curdir = tree[i];
+				(*curdir)->isSelected = true;
+			}
+			break;
+		}
+	}
+	free(tree);
 }
 
 /*
@@ -289,14 +338,73 @@ directory_action(directory_t * curdir)
 static void 
 directory_enter(directory_t * curdir)
 {
-	// TODO
+	// exit curses mode
+	endwin();
+
+	char * command = malloc((strlen(SHELLSTR)+strlen(curdir->fullpath)+1)*sizeof(char));
+	//system(command);
+	execl("cd",curdir->fullpath);
+	// TODO: TURNS OUT CHANGING THE WORKING DIRECTORY OF THE TERMINAL CANNOT BE DONE INSIDE 
+	// A C-PROGRAM AKA ANOTHER PROCESS
+	// BUDUM TSS, GOD DAMN IT
+
+	// re-enter curses move
+	wrefresh(stdscr);
+}
+
+/*
+ * Helper function that takes will collapse the current directory, dir, into an array of 
+ *     directory_t pointers, so that it is easier to move up and down the tree
+ * Returns a pointer to an array of pointers of directory_t, should be free'd by caller,
+ *     the returned array begins with NULL and ends with NULL
+ */
+static directory_t ** 	
+directory_collapsetree(directory_t * dir)
+{
+	directory_t ** tree = malloc(sizeof(directory_t*));
+
+	// add beginning NULL
+	tree[0] = NULL; 	
+	int idx = 0;
+
+	tree = directory_collapsetree_helper(tree,dir,&idx);
+	
+	// add terminating NULL
+	tree = realloc(tree,(idx+2)*sizeof(directory_t*));
+	tree[idx+1] = NULL;
+	return tree;
+}
+
+/*
+ * Recursive helper function for directory_collapsetree 
+ * tree is the collapsed pointer array
+ * dir is the current directory we're going to collapse into an array
+ * idx is an integer pointer used for bookkeeping of the array, tree
+ * Returns a pointer to an array of directory_t pointers
+ * NOTE: caller should always use returned pointer, since realloc is used in this function
+ */
+static directory_t **
+directory_collapsetree_helper(directory_t ** tree, directory_t * dir, int * idx)
+{
+	// add this dir into the collapsed tree
+	tree = realloc(tree,(*idx+2) * sizeof(directory_t*));
+	tree[++(*idx)] = dir;
+
+	// we only want to add children to collapsed tree if this dir is expanded
+	if (dir->isExpanded) {
+		for (int i = 0; i < dir->num_children; ++i) {
+			tree = directory_collapsetree_helper(tree,&dir->children[i],idx);
+		}
+	}
+	return tree;
 }
 
 /*
  * This function is a breakable infinite loop that handles all keyboard input, essentially the control 
  *     point of tr
  */
-static void input_handle(void)
+static void 
+input_handle(void)
 {
 	int ch;
 	bool running = true;
@@ -316,6 +424,7 @@ static void input_handle(void)
 				break;
 			case '\n':  // enter key
 				directory_enter(cur_sel_dir);
+				running = false;
 				break;
 			case 'q':   // quit key
 				running = false;
@@ -337,7 +446,8 @@ static void input_handle(void)
 /*
  * Clears the entire screen, line by line
  */
-static void screen_clear(void)
+static void 
+screen_clear(void)
 {
 	for (int i = 0; i < LINES; ++i) {
 		wmove(stdscr,i,0);
@@ -351,7 +461,8 @@ static void screen_clear(void)
  * Returns a set number of spaces * depth as a cstring
  * Returns NULL if there is no padding
  */
-static char * generate_padding(int depth)
+static char * 
+generate_padding(int depth)
 {
 	if (depth == 0) return NULL;
 	char * re = malloc((LINE_PADDING_WIDTH * depth + 1) * sizeof(char));
