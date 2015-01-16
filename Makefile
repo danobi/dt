@@ -27,7 +27,7 @@ clean:
 install: all
 	@echo installing executable file to ${DESTDIR}${PREFIX}/bin
 	mkdir -p ${DESTDIR}${PREFIX}/bin
-	cp -f dwm ${DESTDIR}${PREFIX}/bin
+	cp -f tr ${DESTDIR}${PREFIX}/bin
 	chmod 755 ${DESTDIR}${PREFIX}/bin/tr
 
 uninstall:
