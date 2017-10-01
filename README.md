@@ -1,10 +1,7 @@
-# tr
-A quicker way to change directories
+# *d*irectory *t*raversal
+A quicker way to change directories.
 
-# note
-This project is currently incomplete. `tr` can't actually change the shell
-directory yet, but plan of a action has been hashed out.
+# Usage
+Source `dt.sh` in your shell rc file.
 
-1. Have `tr` create a temporary file with `cd <dest_dir>`.
-2. Wrap `tr` inside a shell script.
-3. Following execution of the `tr` binary, have the shell script source the temporary file.
+Then you can run `dt`.
