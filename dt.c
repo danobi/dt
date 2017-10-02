@@ -237,7 +237,8 @@ directory_display_helper(const directory_t * dir, int depth)
 	// format and print out directory string
 	// turn on temporary formatting
 	if (dir->isSelected) {
-		attron(A_STANDOUT);
+		attron(A_BOLD);
+		attron(A_UNDERLINE);
 	}
 	int y,x=3;y=x;  	// to silence warnings
 	getyx(stdscr,y,x);
@@ -246,7 +247,8 @@ directory_display_helper(const directory_t * dir, int depth)
 	free(line);
 	// turn off temporary formatting
 	if (dir->isSelected) {
-		attroff(A_STANDOUT);
+		attroff(A_BOLD);
+		attroff(A_UNDERLINE);
 	}
 
 	// print children directories if necessary
