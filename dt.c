@@ -28,20 +28,18 @@
 #include <assert.h>
 #include <linux/limits.h>
 
-#define MAX_PATH_LENGTH 256
 #define LINE_PADDING_WIDTH 3
 #define LOAD_DIR_DEPTH 3
-#define SHELLSTR "source #/bin/bash \ncd "
 
 typedef struct _directory_t {
-	char * dirname; 					// name of current directory
-	char * fullpath; 					// full path of current directory
-	struct _directory_t * parent; 		// pointer to parent directory_t struct
+	char * dirname; 			// name of current directory
+	char * fullpath; 			// full path of current directory
+	struct _directory_t * parent; 	        // pointer to parent directory_t struct
 	struct _directory_t * children;   	// array of children structs
-	int idx_aschild; 						// index of struct in parent->children
-	int num_children; 					// number of children directories
-	bool isExpanded; 					// bool to represent if directory is expanded
-	bool isSelected; 					// bool to represent if this directory is selected
+	int idx_aschild; 			// index of struct in parent->children
+	int num_children; 			// number of children directories
+	bool isExpanded; 			// bool to represent if directory is expanded
+	bool isSelected; 			// bool to represent if this directory is selected
 	bool isChildrenLoaded;
 } directory_t;
 
