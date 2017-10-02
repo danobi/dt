@@ -60,7 +60,7 @@ static directory_t ** directory_collapsetree_helper(directory_t ** tree, directo
 static void	screen_clear(void);
 static void	input_handle(void);
 static char * generate_padding(int depth);
-static bool isValidDir(const char * dir);
+static bool is_valid_dir(const char * dir);
 static char * _strdup(const char * str);
 
 //const char * starting_directory = "/home/dan";
@@ -180,7 +180,7 @@ directory_load(directory_t * dir_t, const char * dir, int depth)
 				sprintf(childpath,"%s/%s",dir_t->fullpath,ep->d_name);
 
 				// only load struct if child path is a directory
-				if (isValidDir(childpath)) {
+				if (is_valid_dir(childpath)) {
 					int numc = ++dir_t->num_children;
 					dir_t->children = realloc(dir_t->children,numc * sizeof(directory_t));
 					directory_init(&dir_t->children[numc-1]); 		// init directory_t struct
@@ -478,7 +478,7 @@ generate_padding(int depth)
  * Helper function that checks if a path is a directory
  */
 static bool
-isValidDir(const char * dir)
+is_valid_dir(const char * dir)
 {
 	struct stat s;
 	return stat(dir,&s) == 0 && S_ISDIR(s.st_mode);
