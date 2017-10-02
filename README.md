@@ -7,6 +7,6 @@ Source `dt.sh` in your shell rc file.
 Then you can run `dt`.
 
 # TODO
-[] Implement paging
+- [ ] Implement paging
 
-[] Implement more cursor movements (eg C-d, C-u, C-e, C-y)
+- [ ] Implement more cursor movements (eg C-d, C-u, C-e, C-y)
