@@ -26,6 +26,7 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <assert.h>
+#include <linux/limits.h>
 
 #define MAX_PATH_LENGTH 256
 #define LINE_PADDING_WIDTH 3
@@ -63,8 +64,6 @@ static char * generate_padding(int depth);
 static bool is_valid_dir(const char * dir);
 static char * _strdup(const char * str);
 
-//const char * starting_directory = "/home/dan";
-const char * starting_directory = "/home/daniel/dirtest";
 directory_t * root_dir;
 directory_t * cur_sel_dir;
 
@@ -74,6 +73,7 @@ directory_t * cur_sel_dir;
 static void
 dt_init(void)
 {
+        char cwd[PATH_MAX];
 	initscr(); 				 // begin ncurses session
 	noecho(); 			     // prevent echoing of pressed keys on screen
 	keypad(stdscr,TRUE);	 // special keys (eg. KEY_DOWN, KEY_UP, etc)
@@ -87,9 +87,13 @@ dt_init(void)
 	}
 
 	// alloc and init root data structure
+        if (!getcwd(cwd, sizeof(cwd))) {
+              fprintf(stderr, "unable to getcwd\n");
+              exit(1);
+        }
 	root_dir = malloc(sizeof(directory_t));
 	directory_init(root_dir);
-	directory_load(root_dir,starting_directory,LOAD_DIR_DEPTH);
+	directory_load(root_dir, cwd, LOAD_DIR_DEPTH);
 
 	// initially the selected directory is root
 	cur_sel_dir = root_dir;

@@ -3,7 +3,7 @@
 NEWDIRFILE=.newdir.dt
 
 function dt() {
-    ./dt
+    /usr/local/bin/dt
     if [[ ! -f $NEWDIRFILE ]]; then
         return 0
     fi
